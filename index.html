@@ -1,0 +1,484 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>מדבקות קרטונים</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --ink:#1d2330; --mute:#667085; --line:#d0d5dd; --acc:#1f6feb; --ok:#127a3e; --err:#b42318; --warn:#9a6700; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.45 system-ui, "Segoe UI", Arial, sans-serif; }
+  header { background:#1d2330; color:#fff; padding:12px 16px; }
+  header h1 { margin:0; font-size:19px; }
+  header p { margin:2px 0 0; color:#c8cdd6; font-size:13px; }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:14px; margin-bottom:14px; }
+  .card h2 { margin:0 0 10px; font-size:16px; }
+  .row { display:flex; flex-wrap:wrap; gap:10px; align-items:end; }
+  label.f { display:flex; flex-direction:column; font-size:13px; color:var(--mute); gap:3px; }
+  input, textarea, select { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); }
+  input[type=number] { width:90px; }
+  textarea { width:100%; min-height:110px; direction:ltr; font-family:ui-monospace, Consolas, monospace; font-size:13px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { border-bottom:1px solid var(--line); padding:4px; text-align:right; }
+  th { font-size:12px; color:var(--mute); font-weight:600; }
+  td input { width:100%; }
+  td.n input { width:80px; }
+  .ltr { direction:ltr; text-align:left; }
+  .btn { font:inherit; border:0; border-radius:7px; padding:8px 14px; cursor:pointer; background:var(--acc); color:#fff; }
+  .btn.sec { background:#e7ecf3; color:var(--ink); }
+  .btn.del { background:transparent; color:var(--err); padding:4px 8px; }
+  .btn:disabled { opacity:.5; cursor:default; }
+  .msg { margin-top:8px; font-size:14px; }
+  .msg.ok { color:var(--ok); } .msg.err { color:var(--err); } .msg.warn { color:var(--warn); }
+  .sum { color:var(--mute); font-size:14px; }
+  #preview { display:flex; flex-wrap:wrap; gap:12px; direction:ltr; }
+  .lbl { background:#fff; border:1px solid #bbb; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,.08); }
+  .lbl svg { display:block; width:330px; height:auto; }
+  .cap { font-size:12px; color:var(--mute); text-align:center; padding:2px 0 4px; direction:rtl; }
+  details summary { cursor:pointer; color:var(--mute); }
+  #drop { border:2px dashed var(--acc); border-radius:10px; padding:26px 12px; text-align:center; font-size:17px; color:var(--acc); cursor:pointer; background:#f5f9ff; }
+  #drop.over, body.over #drop { background:#e3eeff; }
+  @media print {
+    @page { margin:0; }
+    body { background:#fff; }
+    header, .card:not(#prevCard), #prevCard h2, #prevCard .row, .cap { display:none !important; }
+    main, .card { padding:0; margin:0; border:0; }
+    #preview { display:block; }
+    .lbl { border:0; border-radius:0; box-shadow:none; page-break-after:always; break-after:page; }
+    .lbl svg { width:var(--wmm); height:var(--hmm); }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>מדבקות קרטונים — SG International Flowers Trade</h1>
+  <p>מתעודת איסוף / משלוח למדבקות Zebra: מדבקה אחת לכל קרטון</p>
+</header>
+<main>
+
+  <section class="card">
+    <h2>1. פרטי התעודה</h2>
+    <div class="row">
+      <label class="f">מספר תעודה (מופיע במדבקה)<input id="sheet" type="text" style="width:110px" placeholder="103"></label>
+      <label class="f">אורך ברירת מחדל (ס"מ)<input id="defLen" type="number" placeholder="—"></label>
+      <label class="f"><span><input id="numOn" type="checkbox"> מספר קרטון רץ בריבוע הקטן</span>
+        <span>מתחיל מ: <input id="numStart" type="number" value="1" style="width:80px"></span></label>
+    </div>
+  </section>
+
+  <section class="card" id="dropCard">
+    <h2>📄 קובץ האקסל משוקי</h2>
+    <div id="drop" onclick="$('file').click()">גרור לכאן את קובץ האקסל, או לחץ לבחירה
+      <div class="sum">המדבקות נוצרות מיד, ואז לוחצים "הדפס ל-Zebra"</div></div>
+    <input id="file" type="file" accept=".xlsx,.xls,.xlsm,.csv" style="display:none" onchange="readFile(this.files[0]); this.value=''">
+    <div id="fileMsg" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <h2>2. הדבקה מהתעודה (לא חובה)</h2>
+    <p class="sum" style="margin-top:0">מעתיקים את שורות הטבלה מ-Excel / Word (או מקלידים: מוצר, כמות קרטונים, ענפים, מגדל) ולוחצים "קרא שורות". הסדר של העמודות לא משנה: המוצר מזוהה לפי השם והאורך (Ruscus – 80cm), הכמות הקטנה = קרטונים, הגדולה = ענפים, ושם באנגלית בלי ס"מ = מגדל. טקסט בעברית (ישוב, איסוף) מדולג.</p>
+    <textarea id="paste" placeholder="Ruscus – 80cm	8	600		Rami Deutch	ביאר&quot;ז	בני ציון"></textarea>
+    <div class="row" style="margin-top:8px">
+      <button class="btn" onclick="readPaste(false)">קרא שורות (החלף)</button>
+      <button class="btn sec" onclick="readPaste(true)">קרא שורות (הוסף)</button>
+      <button class="btn sec" onclick="loadNote('103')">תעודה 103 (מהצילום)</button>
+      <button class="btn sec" onclick="loadNote('105')">תעודה 105 (מהצילום)</button>
+    </div>
+    <div id="pasteMsg" class="msg"></div>
+  </section>
+
+  <section class="card">
+    <h2>3. שורות</h2>
+    <table>
+      <thead><tr><th>מוצר (Flowers)</th><th>אורך ס"מ</th><th>ענפים לקרטון (QTY)</th><th>קרטונים</th><th>מגדל</th><th>BUD</th><th></th></tr></thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="row" style="margin-top:8px">
+      <button class="btn sec" onclick="addRow()">+ שורה</button>
+      <button class="btn sec" onclick="clearRows()">נקה הכל</button>
+      <span class="sum" id="sum"></span>
+    </div>
+  </section>
+
+  <section class="card" id="prevCard">
+    <h2>4. תצוגה והדפסה</h2>
+    <div class="row" style="margin-bottom:10px">
+      <label class="f">מה להדפיס
+        <select id="scope" onchange="render()">
+          <option value="all">הכל</option>
+          <option value="one">מדבקה אחת לדוגמה</option>
+          <option value="row">שורה אחת…</option>
+        </select></label>
+      <label class="f" id="rowPickWrap" style="display:none">שורה<select id="rowPick" onchange="render()"></select></label>
+      <button class="btn" id="zebraBtn" onclick="printZebra()">🖨️ הדפס ל-Zebra</button>
+      <button class="btn sec" onclick="downloadZPL()">הורד קובץ ZPL</button>
+      <button class="btn sec" onclick="window.print()">הדפסה מהדפדפן</button>
+    </div>
+    <div id="printMsg" class="msg"></div>
+    <div id="preview"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>הגדרות מדבקה ומדפסת</summary>
+      <div class="row" style="margin-top:10px">
+        <label class="f">רוחב מדבקה (מ"מ)<input id="wmm" type="number" value="100"></label>
+        <label class="f">גובה מדבקה (מ"מ)<input id="hmm" type="number" value="66"></label>
+        <label class="f">רזולוציה
+          <select id="dpi"><option value="8">203 dpi</option><option value="12">300 dpi</option></select></label>
+        <label class="f">הזזה ימינה (מ"מ)<input id="offx" type="number" value="0" step="0.5"></label>
+        <label class="f">הזזה למטה (מ"מ)<input id="offy" type="number" value="0" step="0.5"></label>
+        <label class="f">כתובת<input id="addr" type="text" style="width:330px" class="ltr" value="Nachalat Ithack 14 Tel Aviv 6744813 Israel"></label>
+      </div>
+      <p class="sum">ההדפסה הישירה עובדת דרך <b>Zebra Browser Print</b> (תוכנה חינמית של Zebra שרצה במחשב, אייקון ליד השעון). בלעדיה: "הורד קובץ ZPL" ושולחים את הקובץ למדפסת.</p>
+    </details>
+  </section>
+
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+/* ===================== נתונים ===================== */
+const $ = id => document.getElementById(id);
+let ROWS = [];
+const SETTINGS = ['sheet', 'defLen', 'numOn', 'numStart', 'wmm', 'hmm', 'dpi', 'offx', 'offy', 'addr'];
+
+function save(){
+  try {
+    const s = {};
+    SETTINGS.forEach(k => s[k] = $(k).type === 'checkbox' ? $(k).checked : $(k).value);
+    localStorage.setItem('sgLabels', JSON.stringify({ s: s, rows: ROWS }));
+  } catch (e) {}
+}
+function load(){
+  try {
+    const d = JSON.parse(localStorage.getItem('sgLabels') || 'null');
+    if (!d) return;
+    SETTINGS.forEach(k => { if (d.s && d.s[k] != null) { if ($(k).type === 'checkbox') $(k).checked = d.s[k]; else $(k).value = d.s[k]; } });
+    ROWS = d.rows || [];
+  } catch (e) {}
+}
+
+/* ===================== טבלת שורות ===================== */
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]));
+
+function drawRows(){
+  $('rows').innerHTML = ROWS.map((r, i) =>
+    '<tr>' +
+    '<td><input class="ltr" value="' + esc(r.product) + '" oninput="setF(' + i + ',\'product\',this.value)"></td>' +
+    '<td class="n"><input type="number" value="' + esc(r.len) + '" oninput="setF(' + i + ',\'len\',this.value)"></td>' +
+    '<td class="n"><input type="number" value="' + esc(r.qty) + '" oninput="setF(' + i + ',\'qty\',this.value)"></td>' +
+    '<td class="n"><input type="number" value="' + esc(r.cartons) + '" oninput="setF(' + i + ',\'cartons\',this.value)"></td>' +
+    '<td><input class="ltr" value="' + esc(r.grower) + '" oninput="setF(' + i + ',\'grower\',this.value)"></td>' +
+    '<td class="n"><input class="ltr" value="' + esc(r.bud) + '" placeholder="-" oninput="setF(' + i + ',\'bud\',this.value)"></td>' +
+    '<td><button class="btn del" title="מחק שורה" onclick="delRow(' + i + ')">✕</button></td>' +
+    '</tr>').join('');
+  render();
+}
+function setF(i, k, v){ ROWS[i][k] = v; render(); }
+function addRow(){ ROWS.push({ product:'', len:$('defLen').value, qty:'', cartons:'1', grower:'', bud:'' }); drawRows(); }
+function delRow(i){ ROWS.splice(i, 1); drawRows(); }
+function clearRows(){ if (!ROWS.length || confirmClear()) { ROWS = []; drawRows(); } }
+function confirmClear(){ return window.confirm('למחוק את כל השורות?'); }
+
+/* ===================== קריאת הדבקה ===================== */
+// מפרק "Ruscus – 80cm" / "Wax F. Ella - 55cm" לשם ואורך
+function splitProduct(s){
+  const m = String(s).match(/^(.*?)[\s\-–—]*(\d{2,3})\s*cm\s*$/i);
+  return m ? { name: m[1].replace(/[\s\-–—]+$/, '').trim(), len: m[2] } : { name: String(s).trim(), len: '' };
+}
+
+function parseLine(line){
+  let cells = line.split(/\t|\s{3,}|\|/).map(c => c.trim()).filter(c => c !== '');
+  if (!cells.length) return null;
+  if (cells.some(c => /סה"?כ|סה״כ/.test(c))) return null;
+  let product = null, grower = null; const nums = [];
+  cells.forEach(c => {
+    if (/[֐-׿]/.test(c)) return;                 // עברית: ישוב / איסוף — מדלגים
+    if (/^\d+$/.test(c)) { nums.push(+c); return; }
+    if (/\d{2,3}\s*cm\s*$/i.test(c)) { if (!product) product = c; return; }
+    if (/[A-Za-z]/.test(c)) { if (!product) product = c; else if (!grower) grower = c; }
+  });
+  if (!product) return null;
+  // כשיש שני שמות בלי ס"מ: הראשון שמופיע עם ס"מ הוא המוצר; אחרת נשאר הסדר
+  const p = splitProduct(product);
+  let qty = '', cartons = '';
+  if (nums.length >= 2) { const s = nums.slice(0, 2).sort((a, b) => a - b); cartons = s[0]; qty = s[1]; }
+  else if (nums.length === 1) { qty = nums[0]; cartons = 1; }
+  return { product: p.name, len: p.len || $('defLen').value, qty: String(qty), cartons: String(cartons || 1), grower: grower || '', bud: '' };
+}
+
+function readPaste(append){
+  const lines = $('paste').value.split(/\r?\n/);
+  const got = lines.map(parseLine).filter(Boolean);
+  if (!got.length) { msg('pasteMsg', 'err', 'לא זוהו שורות. ודא שבכל שורה יש שם מוצר באנגלית.'); return; }
+  ROWS = append ? ROWS.concat(got) : got;
+  drawRows();
+  const miss = got.filter(r => !r.qty || !r.grower).length;
+  msg('pasteMsg', miss ? 'warn' : 'ok', 'נקראו ' + got.length + ' שורות' + (miss ? ' — ב-' + miss + ' חסרים ענפים או מגדל, השלם בטבלה' : '') + '. בדוק את הטבלה לפני הדפסה.');
+}
+
+// תעודות שפוענחו מצילום (21.11.26): מוצר, קרטונים, ענפים לקרטון, מגדל
+const NOTES = {
+  '103': [
+    ['Ruscus – 80cm', 8, 600, 'Rami Deutch'], ['Ruscus – 80cm', 7, 600, 'Doron Haviv'],
+    ['Aspidistra Variegated - 50cm', 4, 200, 'Pardo Farm'], ['Asparagus Virgathus - 80cm', 5, 300, 'Pardo Farm'],
+    ['Limonium Lilach – 80cm', 4, 200, 'Yuval Barzilai'], ['Limonium White - 80cm', 5, 200, 'Yuval Barzilai'],
+    ['Limonium Main Blue – 80cm', 3, 200, 'Yuval Barzilai']
+  ],
+  '105': [
+    ['Wax F. Ella - 55cm', 7, 250, 'Chen Peleg'], ['Ruscus - 55cm', 2, 1200, 'Doron Haviv'],
+    ['Pittosporum Variegated - 60cm', 1, 150, 'Avi Gefner'], ['Kochia - 60cm', 2, 200, 'Avi Gefner'],
+    ['Grevillea Gold Balianna - 60cm', 1, 300, 'Avi Gefner'], ['Tweedia Blue & White Mix - 50cm', 2, 200, 'Almog Malka'],
+    ['Green Bell - 60cm', 6, 400, 'Gadi Mordechai'], ['Aspidistra Green - 60cm', 2, 600, 'Pardo Farm'],
+    ['Aspidistra Variegated - 60cm', 1, 200, 'Pardo Farm']
+  ]
+};
+function loadNote(n){
+  $('sheet').value = n;
+  ROWS = NOTES[n].map(a => { const p = splitProduct(a[0]); return { product: p.name, len: p.len, qty: String(a[2]), cartons: String(a[1]), grower: a[3], bud: '' }; });
+  $('scope').value = 'all';
+  drawRows();
+  msg('pasteMsg', 'ok', 'תעודה ' + n + ' נטענה: ' + labels().length + ' מדבקות.');
+  $('prevCard').scrollIntoView({ behavior: 'smooth' });
+}
+function loadSample(){ loadNote('103'); }
+
+/* ===================== קובץ אקסל ===================== */
+// מוצא את שורת הכותרות (מוצר / כמות / ענפים / שם מגדל) ולפיה את העמודות.
+// בלי כותרות מוכרות — כל שורה נקראת כמו בהדבקה (לפי התוכן).
+function sheetRows(aoa){
+  const norm = v => String(v == null ? '' : v).trim();
+  let hi = -1, col = {};
+  for (let i = 0; i < Math.min(aoa.length, 40) && hi < 0; i++){
+    const r = aoa[i].map(norm);
+    const f = re => r.findIndex(c => re.test(c));
+    const c = { product: f(/^מוצר|flowers?|product/i), cartons: f(/^כמות|cartons?|boxes/i), qty: f(/^ענפים|stems|qty/i), grower: f(/מגדל|grower/i) };
+    if (c.product >= 0 && (c.cartons >= 0 || c.qty >= 0)) { hi = i; col = c; }
+  }
+  // מספר התעודה: מספר בודד (2-5 ספרות) בשורות שמעל הטבלה
+  let sheet = '';
+  for (let i = 0; i < (hi < 0 ? 15 : hi) && i < aoa.length && !sheet; i++)
+    aoa[i].forEach(v => { if (!sheet && /^\d{2,5}$/.test(norm(v))) sheet = norm(v); });
+  const out = [];
+  if (hi >= 0){
+    for (let i = hi + 1; i < aoa.length; i++){
+      const r = aoa[i].map(norm), prod = r[col.product] || '';
+      if (/סה"?כ|סה״כ|total/i.test(r.join(' '))) break;
+      if (!/[A-Za-z]/.test(prod)) continue;
+      const p = splitProduct(prod);
+      out.push({ product: p.name, len: p.len || $('defLen').value,
+                 qty: col.qty >= 0 ? r[col.qty].replace(/[^\d]/g, '') : '',
+                 cartons: col.cartons >= 0 ? (r[col.cartons].replace(/[^\d]/g, '') || '1') : '1',
+                 grower: col.grower >= 0 ? r[col.grower] : '', bud: '' });
+    }
+  } else {
+    aoa.forEach(r => { const x = parseLine(r.map(norm).join('\t')); if (x) out.push(x); });
+  }
+  return { sheet: sheet, rows: out };
+}
+
+function readFile(f){
+  if (!f) return;
+  if (typeof XLSX === 'undefined') { msg('fileMsg', 'err', 'רכיב קריאת האקסל לא נטען (צריך חיבור לאינטרנט). נסה לרענן את הדף.'); return; }
+  const rd = new FileReader();
+  rd.onload = e => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      let best = null;
+      wb.SheetNames.forEach(n => {
+        const res = sheetRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }));
+        if (!best || res.rows.length > best.rows.length) best = res;
+      });
+      if (!best || !best.rows.length) { msg('fileMsg', 'err', 'לא מצאתי שורות מוצרים בקובץ ' + esc(f.name) + '. שלח לי את הקובץ ואתאים.'); return; }
+      ROWS = best.rows;
+      if (best.sheet) $('sheet').value = best.sheet;
+      $('scope').value = 'all';
+      drawRows();
+      const n = labels().length, miss = ROWS.filter(r => !r.qty || !r.grower).length;
+      msg('fileMsg', miss ? 'warn' : 'ok', '✅ ' + esc(f.name) + ': תעודה ' + esc($('sheet').value || '?') + ', ' + ROWS.length + ' שורות, ' + n + ' מדבקות' +
+          (miss ? ' — ב-' + miss + ' שורות חסרים ענפים או מגדל' : '') + '. אפשר ללחוץ "הדפס ל-Zebra".');
+      $('prevCard').scrollIntoView({ behavior: 'smooth' });
+    } catch (err) { msg('fileMsg', 'err', 'לא הצלחתי לקרוא את הקובץ: ' + esc(err.message)); }
+  };
+  rd.readAsArrayBuffer(f);
+}
+
+// גרירה לכל מקום בדף
+['dragenter', 'dragover'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); document.body.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => document.addEventListener(ev, e => { e.preventDefault(); if (ev === 'drop' || !e.relatedTarget) document.body.classList.remove('over'); }));
+document.addEventListener('drop', e => { const f = e.dataTransfer && e.dataTransfer.files[0]; if (f) readFile(f); });
+
+/* ===================== מדבקות ===================== */
+// רשימת המדבקות: אחת לכל קרטון, לפי סדר השורות
+function labels(){
+  const out = []; let n = parseInt($('numStart').value, 10) || 1;
+  ROWS.forEach((r, ri) => {
+    const c = Math.max(0, parseInt(r.cartons, 10) || 0);
+    for (let j = 0; j < c; j++) out.push({ ri: ri, k: j + 1, of: c, num: n++, r: r });
+  });
+  return out;
+}
+
+function scoped(){
+  const all = labels(), sc = $('scope').value;
+  if (sc === 'one') return all.slice(0, 1);
+  if (sc === 'row') { const ri = +$('rowPick').value; return all.filter(l => l.ri === ri); }
+  return all;
+}
+
+// פריסת המדבקה ביחידות של מ"מ (נמדד מהמדבקות הקיימות). ZPL ותצוגה נבנים מאותה רשימה.
+// text: x,y = פינה שמאלית עליונה; h = גובה גופן; w = רוחב תו; box: רוחב ויישור (L/R/C) אם צריך
+function layout(l){
+  const r = l.r, sheet = $('sheet').value.trim(), addr = $('addr').value;
+  const T = (x, y, h, w, s, box, al) => ({ t:'text', x:x, y:y, h:h, w:w, s:String(s == null ? '' : s), box:box, al:al });
+  const L = (x, y, w, h, th) => ({ t:'box', x:x, y:y, w:w, h:h, th:th || 0.25 });
+  const rowsY = [24, 28.3, 32.6, 36.9, 41.2];            // קווי שורות הטבלה
+  const fh = 3.1, fw = 2.7;                                // גופן שורות
+  const ty = i => rowsY[i] + 0.7;
+  // שם ארוך מוצר/מגדל: מצרים את הגופן כדי שייכנס עד עמודת LEN (≈32 מ"מ)
+  const fit = s => Math.max(1.6, Math.min(fw, 31.5 / (String(s || '').length * 0.62 || 1)));
+  const bud = (r.bud || '').trim() || '-';
+  const el = [
+    T(1.5, 1.8, 5.6, 4.6, 'SG International Flowers Trade'),
+    T(1.5, 10.2, 2.9, 2.35, addr),
+    L(1.5, 13.4, 56, 0, 0.25),                             // קו תחתון לכתובת
+    T(64, 7.6, 4.6, 3.8, sheet, 22, 'R'),
+    L(2, 18.2, 48, 0, 0.3),                                // קו מעל הכותרות
+    T(2, 19.6, 3.6, 3.0, 'QTY'),
+    T(16.5, 19.6, 3.6, 3.0, 'Flowers'),
+    T(51.5, 19.6, 3.6, 3.0, 'LEN'),
+    T(63.6, 19.6, 3.6, 3.0, 'BUD'),
+    L(62.5, 17.7, 24.2, 0, 0.25),                          // מסגרת BUD למעלה
+    L(86.7, 17.7, 0, 6.3, 0.25),
+    L(62.5, 17.7, 0, 6.3, 0.25)
+  ];
+  rowsY.forEach(y => el.push(L(2, y, 84.7, 0, 0.25)));
+  el.push(L(50.1, rowsY[0], 0, rowsY[4] - rowsY[0], 0.25), L(62.5, rowsY[0], 0, rowsY[4] - rowsY[0], 0.25), L(86.7, rowsY[0], 0, rowsY[4] - rowsY[0], 0.25));
+  // שורה 1: מוצר
+  el.push(T(2, ty(0), fh, fw, r.qty, 13, 'R'), T(17.3, ty(0), fh, fit(r.product), r.product),
+          T(51, ty(0), fh, fw, r.len || '-', 10, 'R'), T(64, ty(0), fh, fw, bud, 21, 'R'));
+  // שורות 2-3: ריקות (0 ו-")
+  [1, 2].forEach(i => el.push(T(2, ty(i), fh, fw, '0', 13, 'R'), T(43.5, ty(i), fh, fw, '"'),
+                              T(51, ty(i), fh, fw, '-', 7, 'R'), T(64, ty(i), fh, fw, '-', 21, 'R')));
+  // שורה 4: מגדל
+  el.push(T(2, ty(3), fh, fw, '0', 13, 'R'), T(17.6, ty(3), fh, fit(r.grower), r.grower),
+          T(51, ty(3), fh, fw, '-', 7, 'R'), T(64, ty(3), fh, fw, '-', 21, 'R'));
+  // ריבוע קטן מתחת לטבלה (אופציונלי: מספר קרטון)
+  el.push(L(5, 45.6, 12.6, 0, 0.3), L(17.6, rowsY[4], 0, 45.6 - rowsY[4], 0.3));
+  if ($('numOn').checked) el.push(T(5, 42, 3.4, 2.9, l.num, 12.4, 'C'));
+  el.push(T(5.5, 50.6, 3.4, 2.9, 'PRODUCE OF ISRAEL'), T(53, 50.3, 3.4, 2.9, 'CUT FLOWERS'));
+  return el;
+}
+
+/* ===================== ZPL ===================== */
+const zs = s => String(s).replace(/[\^~]/g, ' ');
+
+function toZPL(list){
+  const d = +$('dpi').value, D = mm => Math.round(mm * d);
+  const W = D(+$('wmm').value || 100), H = D(+$('hmm').value || 66);
+  const ox = D(+$('offx').value || 0), oy = D(+$('offy').value || 0);
+  return list.map(l => {
+    let z = '^XA^CI28^PW' + W + '^LL' + H + '^LH' + ox + ',' + oy + '\n';
+    layout(l).forEach(e => {
+      if (e.t === 'box') {
+        const th = Math.max(1, D(e.th));
+        z += '^FO' + D(e.x) + ',' + D(e.y) + '^GB' + Math.max(th, D(e.w)) + ',' + Math.max(th, D(e.h)) + ',' + th + '^FS\n';
+      } else if (e.s !== '') {
+        z += '^FO' + D(e.x) + ',' + D(e.y) + '^A0N,' + D(e.h) + ',' + D(e.w) +
+             (e.box ? '^FB' + D(e.box) + ',1,0,' + e.al + ',0' : '') + '^FD' + zs(e.s) + '^FS\n';
+      }
+    });
+    return z + '^XZ\n';
+  }).join('');
+}
+
+/* ===================== תצוגה (SVG) ===================== */
+function toSVG(l){
+  const W = +$('wmm').value || 100, H = +$('hmm').value || 66;
+  let s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '">';
+  layout(l).forEach(e => {
+    if (e.t === 'box') {
+      s += '<rect x="' + e.x + '" y="' + e.y + '" width="' + Math.max(e.w, e.th) + '" height="' + Math.max(e.h, e.th) + '" fill="#000"/>';
+    } else if (e.s !== '') {
+      // גופן 0 של Zebra צר ומודגש: רוחב התו ≈ w; מקטינים את הרוחב בעזרת scaleX
+      const fs = e.h, sx = (e.w / e.h) * 1.12;
+      let x = e.x, anchor = 'start';
+      if (e.box && e.al === 'R') { x = e.x + e.box; anchor = 'end'; }
+      if (e.box && e.al === 'C') { x = e.x + e.box / 2; anchor = 'middle'; }
+      s += '<text transform="translate(' + x + ',' + (e.y + fs * 0.8) + ') scale(' + sx.toFixed(3) + ',1)" font-family="Arial Narrow, Arial, sans-serif" font-weight="700" font-size="' + fs + '" text-anchor="' + anchor + '">' + esc(e.s) + '</text>';
+    }
+  });
+  return s + '</svg>';
+}
+
+function render(){
+  // רשימת השורות לבחירה
+  const cur = $('rowPick').value;
+  $('rowPick').innerHTML = ROWS.map((r, i) => '<option value="' + i + '">' + (i + 1) + '. ' + esc(r.product) + ' · ' + esc(r.grower) + ' (' + (r.cartons || 0) + ')</option>').join('');
+  if (cur !== '' && +cur < ROWS.length) $('rowPick').value = cur;
+  $('rowPickWrap').style.display = $('scope').value === 'row' ? '' : 'none';
+
+  const all = labels(), list = scoped();
+  const stems = ROWS.reduce((a, r) => a + (parseInt(r.qty, 10) || 0) * (parseInt(r.cartons, 10) || 0), 0);
+  $('sum').textContent = ROWS.length ? 'סה"כ ' + all.length + ' קרטונים · ' + stems.toLocaleString('he-IL') + ' ענפים' : '';
+  document.documentElement.style.setProperty('--wmm', ($('wmm').value || 100) + 'mm');
+  document.documentElement.style.setProperty('--hmm', ($('hmm').value || 66) + 'mm');
+  const MAX = 60;
+  $('preview').innerHTML = list.slice(0, MAX).map(l =>
+    '<div class="lbl">' + toSVG(l) + '<div class="cap">שורה ' + (l.ri + 1) + ' · קרטון ' + l.k + ' מתוך ' + l.of + '</div></div>').join('') +
+    (list.length > MAX ? '<div class="sum">…ועוד ' + (list.length - MAX) + ' מדבקות (בתצוגה מוצגות ' + MAX + ' הראשונות; כולן יודפסו)</div>' : '');
+  save();
+}
+
+/* ===================== הדפסה ===================== */
+function msg(id, cls, html){ $(id).className = 'msg ' + cls; $(id).innerHTML = html; }
+
+function check(){
+  const list = scoped();
+  if (!list.length) { msg('printMsg', 'err', 'אין מדבקות להדפסה. מלא שורות עם מספר קרטונים.'); return null; }
+  const bad = ROWS.findIndex(r => !String(r.product).trim() || !String(r.qty).trim());
+  if (bad >= 0) { msg('printMsg', 'err', 'בשורה ' + (bad + 1) + ' חסר מוצר או מספר ענפים.'); return null; }
+  if (!$('sheet').value.trim()) { msg('printMsg', 'err', 'חסר מספר תעודה.'); return null; }
+  return list;
+}
+
+function downloadZPL(){
+  const list = check(); if (!list) return;
+  const blob = new Blob([toZPL(list)], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = 'labels-' + $('sheet').value.trim() + '.zpl';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  msg('printMsg', 'ok', 'הקובץ ירד — ' + list.length + ' מדבקות.');
+}
+
+// הדפסה ישירה דרך Zebra Browser Print (שירות מקומי בפורט 9100 / 9101)
+async function printZebra(){
+  const list = check(); if (!list) return;
+  if (list.length > 20 && !window.confirm('להדפיס ' + list.length + ' מדבקות?')) return;
+  const z = toZPL(list);
+  msg('printMsg', 'warn', '⏳ מתחבר למדפסת…');
+  for (const base of ['http://127.0.0.1:9100', 'https://127.0.0.1:9101', 'http://localhost:9100']) {
+    try {
+      const res = await (await fetch(base + '/available')).json();
+      const ps = (res && res.printer) || [];
+      if (!ps.length) continue;
+      const w = await fetch(base + '/write', { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ device: ps[0], data: z }) });
+      if (!w.ok) throw new Error('write ' + w.status);
+      msg('printMsg', 'ok', '✅ נשלח למדפסת ' + esc(ps[0].name || '') + ' — ' + list.length + ' מדבקות');
+      return;
+    } catch (e) { /* הכתובת הבאה */ }
+  }
+  msg('printMsg', 'err', 'המדפסת לא נמצאה. ודא ש-<b>Zebra Browser Print</b> פתוח (אייקון ליד השעון) והמדפסת דלוקה — או השתמש ב"הורד קובץ ZPL".');
+}
+
+/* ===================== התחלה ===================== */
+load();
+SETTINGS.forEach(k => $(k).addEventListener('input', render));
+$('numOn').addEventListener('change', render);
+drawRows();
+</script>
+</body>
+</html>
