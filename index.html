@@ -23,6 +23,7 @@
   th, td { border-bottom:1px solid var(--line); padding:4px; text-align:right; }
   th { font-size:12px; color:var(--mute); font-weight:600; }
   td input { width:100%; }
+  td input.miss { border-color:var(--err); background:#fff4f4; }
   td.n input { width:80px; }
   .ltr { direction:ltr; text-align:left; }
   .btn { font:inherit; border:0; border-radius:7px; padding:8px 14px; cursor:pointer; background:var(--acc); color:#fff; }
@@ -68,22 +69,20 @@
   </section>
 
   <section class="card" id="dropCard">
-    <h2>📄 קובץ האקסל משוקי</h2>
-    <div id="drop" onclick="$('file').click()">גרור לכאן את קובץ האקסל, או לחץ לבחירה
+    <h2>📄 הקובץ משוקי</h2>
+    <div id="drop" onclick="$('file').click()">גרור לכאן את התעודה משוקי (אקסל, PDF או צילום), או לחץ לבחירה
       <div class="sum">המדבקות נוצרות מיד, ואז לוחצים "הדפס ל-Zebra"</div></div>
-    <input id="file" type="file" accept=".xlsx,.xls,.xlsm,.csv" style="display:none" onchange="readFile(this.files[0]); this.value=''">
+    <input id="file" type="file" accept=".xlsx,.xls,.xlsm,.csv,.pdf,image/*" style="display:none" onchange="readFile(this.files[0]); this.value=''">
     <div id="fileMsg" class="msg"></div>
   </section>
 
   <section class="card">
     <h2>2. הדבקה מהתעודה (לא חובה)</h2>
     <p class="sum" style="margin-top:0">מעתיקים את שורות הטבלה מ-Excel / Word (או מקלידים: מוצר, כמות קרטונים, ענפים, מגדל) ולוחצים "קרא שורות". הסדר של העמודות לא משנה: המוצר מזוהה לפי השם והאורך (Ruscus – 80cm), הכמות הקטנה = קרטונים, הגדולה = ענפים, ושם באנגלית בלי ס"מ = מגדל. טקסט בעברית (ישוב, איסוף) מדולג.</p>
-    <textarea id="paste" placeholder="Ruscus – 80cm	8	600		Rami Deutch	ביאר&quot;ז	בני ציון"></textarea>
+    <textarea id="paste" placeholder="Ruscus – 80cm	8	600		Grower Name"></textarea>
     <div class="row" style="margin-top:8px">
       <button class="btn" onclick="readPaste(false)">קרא שורות (החלף)</button>
       <button class="btn sec" onclick="readPaste(true)">קרא שורות (הוסף)</button>
-      <button class="btn sec" onclick="loadNote('103')">תעודה 103 (מהצילום)</button>
-      <button class="btn sec" onclick="loadNote('105')">תעודה 105 (מהצילום)</button>
     </div>
     <div id="pasteMsg" class="msg"></div>
   </section>
@@ -138,6 +137,9 @@
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";</script>
 <script>
 /* ===================== נתונים ===================== */
 const $ = id => document.getElementById(id);
@@ -167,10 +169,10 @@ function drawRows(){
   $('rows').innerHTML = ROWS.map((r, i) =>
     '<tr>' +
     '<td><input class="ltr" value="' + esc(r.product) + '" oninput="setF(' + i + ',\'product\',this.value)"></td>' +
-    '<td class="n"><input type="number" value="' + esc(r.len) + '" oninput="setF(' + i + ',\'len\',this.value)"></td>' +
-    '<td class="n"><input type="number" value="' + esc(r.qty) + '" oninput="setF(' + i + ',\'qty\',this.value)"></td>' +
+    '<td class="n"><input type="number" value="' + esc(r.len) + '"' + (String(r.len || '').trim() ? '' : ' class="miss"') + ' oninput="setF(' + i + ',\'len\',this.value)"></td>' +
+    '<td class="n"><input type="number" value="' + esc(r.qty) + '"' + (String(r.qty || '').trim() ? '' : ' class="miss"') + ' oninput="setF(' + i + ',\'qty\',this.value)"></td>' +
     '<td class="n"><input type="number" value="' + esc(r.cartons) + '" oninput="setF(' + i + ',\'cartons\',this.value)"></td>' +
-    '<td><input class="ltr" value="' + esc(r.grower) + '" oninput="setF(' + i + ',\'grower\',this.value)"></td>' +
+    '<td><input class="ltr' + (String(r.grower || '').trim() ? '' : ' miss') + '" value="' + esc(r.grower) + '"' + ' oninput="setF(' + i + ',\'grower\',this.value)"></td>' +
     '<td class="n"><input class="ltr" value="' + esc(r.bud) + '" placeholder="-" oninput="setF(' + i + ',\'bud\',this.value)"></td>' +
     '<td><button class="btn del" title="מחק שורה" onclick="delRow(' + i + ')">✕</button></td>' +
     '</tr>').join('');
@@ -189,24 +191,26 @@ function splitProduct(s){
   return m ? { name: m[1].replace(/[\s\-–—]+$/, '').trim(), len: m[2] } : { name: String(s).trim(), len: '' };
 }
 
+// שורה מהתעודה (הדבקה / PDF): המוצר מזוהה לפי "שם - NNcm" בכל מקום בשורה; מה שנשאר באנגלית = מגדל;
+// שני המספרים הראשונים = ענפים וקרטונים (הקטן = קרטונים). עברית (ישוב / איסוף) מדולגת.
 function parseLine(line){
-  let cells = line.split(/\t|\s{3,}|\|/).map(c => c.trim()).filter(c => c !== '');
+  if (/סה"?כ|סה״כ/.test(line)) return null;
+  const cells = line.split(/\t|\s{2,}|\|/)
+    .map(c => c.split(/\s+/).filter(w => !/[֐-׿]/.test(w)).join(' ').trim())
+    .filter(Boolean);
   if (!cells.length) return null;
-  if (cells.some(c => /סה"?כ|סה״כ/.test(c))) return null;
-  let product = null, grower = null; const nums = [];
-  cells.forEach(c => {
-    if (/[֐-׿]/.test(c)) return;                 // עברית: ישוב / איסוף — מדלגים
-    if (/^\d+$/.test(c)) { nums.push(+c); return; }
-    if (/\d{2,3}\s*cm\s*$/i.test(c)) { if (!product) product = c; return; }
-    if (/[A-Za-z]/.test(c)) { if (!product) product = c; else if (!grower) grower = c; }
-  });
-  if (!product) return null;
-  // כשיש שני שמות בלי ס"מ: הראשון שמופיע עם ס"מ הוא המוצר; אחרת נשאר הסדר
-  const p = splitProduct(product);
+  let rest = cells.join(' \t '), product = null, len = '';
+  const m = rest.match(/([A-Za-z][A-Za-z .&'’\/]*?(?:-[A-Za-z][A-Za-z .&'’\/]*?)*)\s*[-–—]?\s*(\d{2,3})\s*cm\b/i);
+  if (m) { product = m[1].replace(/[\s\-–—]+$/, '').trim(); len = m[2]; rest = rest.replace(m[0], ' \t '); }
+  const nums = (rest.match(/(^|[^\w.])(\d+)(?![\w.])/g) || []).map(x => +x.replace(/\D/g, ''));
+  const names = rest.split(/\t|\d+/).map(x => x.replace(/[^A-Za-z .&'’\/-]/g, ' ').replace(/\s+/g, ' ').trim())
+    .filter(x => /[A-Za-z]{2}/.test(x));
+  if (!product) { if (!names.length) return null; product = names.shift(); const p = splitProduct(product); product = p.name; len = p.len; }
+  const grower = names[0] || '';
   let qty = '', cartons = '';
-  if (nums.length >= 2) { const s = nums.slice(0, 2).sort((a, b) => a - b); cartons = s[0]; qty = s[1]; }
+  if (nums.length >= 2) { const s2 = nums.slice(0, 2).sort((a, b) => a - b); cartons = s2[0]; qty = s2[1]; }
   else if (nums.length === 1) { qty = nums[0]; cartons = 1; }
-  return { product: p.name, len: p.len || $('defLen').value, qty: String(qty), cartons: String(cartons || 1), grower: grower || '', bud: '' };
+  return { product: product, len: len || $('defLen').value, qty: String(qty), cartons: String(cartons || 1), grower: grower, bud: '' };
 }
 
 function readPaste(append){
@@ -219,31 +223,6 @@ function readPaste(append){
   msg('pasteMsg', miss ? 'warn' : 'ok', 'נקראו ' + got.length + ' שורות' + (miss ? ' — ב-' + miss + ' חסרים ענפים או מגדל, השלם בטבלה' : '') + '. בדוק את הטבלה לפני הדפסה.');
 }
 
-// תעודות שפוענחו מצילום (21.11.26): מוצר, קרטונים, ענפים לקרטון, מגדל
-const NOTES = {
-  '103': [
-    ['Ruscus – 80cm', 8, 600, 'Rami Deutch'], ['Ruscus – 80cm', 7, 600, 'Doron Haviv'],
-    ['Aspidistra Variegated - 50cm', 4, 200, 'Pardo Farm'], ['Asparagus Virgathus - 80cm', 5, 300, 'Pardo Farm'],
-    ['Limonium Lilach – 80cm', 4, 200, 'Yuval Barzilai'], ['Limonium White - 80cm', 5, 200, 'Yuval Barzilai'],
-    ['Limonium Main Blue – 80cm', 3, 200, 'Yuval Barzilai']
-  ],
-  '105': [
-    ['Wax F. Ella - 55cm', 7, 250, 'Chen Peleg'], ['Ruscus - 55cm', 2, 1200, 'Doron Haviv'],
-    ['Pittosporum Variegated - 60cm', 1, 150, 'Avi Gefner'], ['Kochia - 60cm', 2, 200, 'Avi Gefner'],
-    ['Grevillea Gold Balianna - 60cm', 1, 300, 'Avi Gefner'], ['Tweedia Blue & White Mix - 50cm', 2, 200, 'Almog Malka'],
-    ['Green Bell - 60cm', 6, 400, 'Gadi Mordechai'], ['Aspidistra Green - 60cm', 2, 600, 'Pardo Farm'],
-    ['Aspidistra Variegated - 60cm', 1, 200, 'Pardo Farm']
-  ]
-};
-function loadNote(n){
-  $('sheet').value = n;
-  ROWS = NOTES[n].map(a => { const p = splitProduct(a[0]); return { product: p.name, len: p.len, qty: String(a[2]), cartons: String(a[1]), grower: a[3], bud: '' }; });
-  $('scope').value = 'all';
-  drawRows();
-  msg('pasteMsg', 'ok', 'תעודה ' + n + ' נטענה: ' + labels().length + ' מדבקות.');
-  $('prevCard').scrollIntoView({ behavior: 'smooth' });
-}
-function loadSample(){ loadNote('103'); }
 
 /* ===================== קובץ אקסל ===================== */
 // מוצא את שורת הכותרות (מוצר / כמות / ענפים / שם מגדל) ולפיה את העמודות.
@@ -279,8 +258,30 @@ function sheetRows(aoa){
   return { sheet: sheet, rows: out };
 }
 
+function applyResult(best, name, fromPhoto){
+  if (!best || !best.rows.length) { msg('fileMsg', 'err', 'לא מצאתי שורות מוצרים בקובץ ' + esc(name) + '. שלח לי את הקובץ ואתאים.'); return; }
+  ROWS = best.rows;
+  if (!fromPhoto) learn(ROWS);
+  if (best.sheet) $('sheet').value = best.sheet;
+  $('scope').value = 'all';
+  drawRows();
+  const n = labels().length, miss = ROWS.filter(r => !r.qty || !r.grower).length;
+  if (fromPhoto) {
+    msg('fileMsg', 'warn', '📷 ' + esc(name) + ': נקראו ' + ROWS.length + ' שורות, ' + n + ' קרטונים (תעודה ' + esc($('sheet').value || '?') + '). ' +
+        '<b>נקרא מצילום — עבור על הטבלה למטה מול התעודה</b> (בעיקר כמות הקרטונים), תקן אם צריך, ואז "הדפס ל-Zebra".' +
+        (miss ? ' ב-' + miss + ' שורות חסרים ענפים או מגדל.' : ''));
+    $('rows').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    return;
+  }
+  msg('fileMsg', miss ? 'warn' : 'ok', '✅ ' + esc(name) + ': תעודה ' + esc($('sheet').value || '?') + ', ' + ROWS.length + ' שורות, ' + n + ' מדבקות' +
+      (miss ? ' — ב-' + miss + ' שורות חסרים ענפים או מגדל' : '') + '. אפשר ללחוץ "הדפס ל-Zebra".');
+  $('prevCard').scrollIntoView({ behavior: 'smooth' });
+}
+
 function readFile(f){
   if (!f) return;
+  if (/\.pdf$/i.test(f.name) || f.type === 'application/pdf') { readPdf(f); return; }
+  if (/^image\//.test(f.type) || /\.(jpe?g|png|heic|webp|bmp)$/i.test(f.name)) { readImage(f); return; }
   if (typeof XLSX === 'undefined') { msg('fileMsg', 'err', 'רכיב קריאת האקסל לא נטען (צריך חיבור לאינטרנט). נסה לרענן את הדף.'); return; }
   const rd = new FileReader();
   rd.onload = e => {
@@ -291,16 +292,213 @@ function readFile(f){
         const res = sheetRows(XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: false, defval: '' }));
         if (!best || res.rows.length > best.rows.length) best = res;
       });
-      if (!best || !best.rows.length) { msg('fileMsg', 'err', 'לא מצאתי שורות מוצרים בקובץ ' + esc(f.name) + '. שלח לי את הקובץ ואתאים.'); return; }
-      ROWS = best.rows;
-      if (best.sheet) $('sheet').value = best.sheet;
-      $('scope').value = 'all';
-      drawRows();
-      const n = labels().length, miss = ROWS.filter(r => !r.qty || !r.grower).length;
-      msg('fileMsg', miss ? 'warn' : 'ok', '✅ ' + esc(f.name) + ': תעודה ' + esc($('sheet').value || '?') + ', ' + ROWS.length + ' שורות, ' + n + ' מדבקות' +
-          (miss ? ' — ב-' + miss + ' שורות חסרים ענפים או מגדל' : '') + '. אפשר ללחוץ "הדפס ל-Zebra".');
-      $('prevCard').scrollIntoView({ behavior: 'smooth' });
+      applyResult(best, f.name);
     } catch (err) { msg('fileMsg', 'err', 'לא הצלחתי לקרוא את הקובץ: ' + esc(err.message)); }
+  };
+  rd.readAsArrayBuffer(f);
+}
+
+/* ===================== צילום / סריקה (OCR) ===================== */
+// קורא את התעודה מתמונה עם Tesseract (בדפדפן, אנגלית ומספרים בלבד — העברית ממילא מדולגת).
+// המילים מקובצות לשורות, ובתוך שורה רווח גדול = תא חדש; כל שורה נקראת כמו בהדבקה (parseLine).
+async function ocrLines(canvases, status){
+  const worker = await Tesseract.createWorker('eng', 1, {
+    workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/worker.min.js',
+    corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5.1.1',
+    langPath: 'https://cdn.jsdelivr.net/npm/@tesseract.js-data/eng@1.0.0/4.0.0_best_int',
+    logger: m => { if (m.status === 'recognizing text') status(Math.round(m.progress * 100)); }
+  });
+  await worker.setParameters({ preserve_interword_spaces: '1' });
+  const lines = [];
+  try {
+    for (const c of canvases){
+      const { data } = await worker.recognize(c);
+      (data.lines || []).forEach(ln => {
+        const ws = (ln.words || []).filter(w => w.text && w.text.trim()).sort((a, b) => a.bbox.x0 - b.bbox.x0);
+        let line = '', end = null;
+        ws.forEach(w => {
+          const h = Math.max(8, w.bbox.y1 - w.bbox.y0);
+          line += end === null ? w.text : ((w.bbox.x0 - end > h * 1.2 ? '\t' : ' ') + w.text);
+          end = w.bbox.x1;
+        });
+        if (line.trim()) lines.push(line);
+      });
+    }
+  } finally { await worker.terminate(); }
+  return lines;
+}
+
+// תמונה → קנבס באפור, עד 2600 נקודות ברוחב (מהיר יותר, ולא פוגע בקריאה)
+function toCanvas(img, w, h){
+  const k = Math.min(1, 2600 / Math.max(w, h)), c = document.createElement('canvas');
+  c.width = Math.round(w * k); c.height = Math.round(h * k);
+  const g = c.getContext('2d'); g.filter = 'grayscale(1) contrast(1.3)'; g.drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+
+async function runOcr(canvases, name){
+  if (typeof Tesseract === 'undefined') { msg('fileMsg', 'err', 'רכיב קריאת הצילום לא נטען (צריך חיבור לאינטרנט). נסה לרענן את הדף.'); return; }
+  msg('fileMsg', 'warn', '⏳ קורא את הצילום… (בפעם הראשונה זה לוקח כחצי דקה)');
+  try {
+    const lines = await ocrLines(canvases, p => msg('fileMsg', 'warn', '⏳ קורא את הצילום… ' + p + '%'));
+    window.__lines = lines;
+    applyResult(ocrRows(lines), name, true);
+  } catch (err) { msg('fileMsg', 'err', 'לא הצלחתי לקרוא את הצילום: ' + esc(err.message || err)); }
+}
+
+// ---- פענוח שורות מצילום: הטקסט מלוכלך (קווי טבלה, עברית שנקראה כאותיות לטיניות), לכן:
+// מספרים = ענפים ואחריו קרטונים; מה שלפניהם = מגדל, מה שאחריהם = מוצר + אורך.
+// שמות מוצרים ומגדלים מתוקנים לפי מילון: שמות מהתעודות שכבר נקראו (אקסל / PDF / ידני) נשמרים ומשמשים לתיקון.
+const BASE_DICT = { p: ['Ruscus', 'Aspidistra Variegated', 'Aspidistra Green', 'Asparagus Virgathus', 'Limonium Lilach', 'Limonium White',
+  'Limonium Main Blue', 'Wax F. Ella', 'Pittosporum Variegated', 'Kochia', 'Grevillea Gold Balianna', 'Tweedia Blue & White Mix', 'Green Bell',
+      'Ruscus Spider', 'Wax F.Harmony', 'Wax F.Jupiter', 'Wax Flower Ella'],
+  g: [] };   // מגדלים: נלמדים מהתעודות שנקראו במחשב הזה (לא נשמרים בדף עצמו)
+function dict(){
+  let d = { p: [], g: [] };
+  try { d = JSON.parse(localStorage.getItem('sgDict') || '{"p":[],"g":[]}'); } catch (e) {}
+  return { p: [...new Set(BASE_DICT.p.concat(d.p || []))], g: [...new Set(BASE_DICT.g.concat(d.g || []))] };
+}
+function learn(rows){
+  try {
+    const d = JSON.parse(localStorage.getItem('sgDict') || '{"p":[],"g":[]}');
+    rows.forEach(r => { if (r.product && !d.p.includes(r.product)) d.p.push(r.product); if (r.grower && !d.g.includes(r.grower)) d.g.push(r.grower); });
+    localStorage.setItem('sgDict', JSON.stringify(d));
+  } catch (e) {}
+}
+const letters = s => String(s).toLowerCase().replace(/[^a-z]/g, '');
+function dice(a, b){
+  if (a.length < 2 || b.length < 2) return 0;
+  const bg = s => { const m = {}; for (let i = 0; i < s.length - 1; i++) { const k = s.substr(i, 2); m[k] = (m[k] || 0) + 1; } return m; };
+  const A = bg(a), B = bg(b); let n = 0;
+  for (const k in A) if (B[k]) n += Math.min(A[k], B[k]);
+  return 2 * n / (a.length + b.length - 2);
+}
+// הציון הטוב ביותר של שם מהמילון בתוך הטקסט (חלון באורך השם, כי לפני/אחרי יש רעש)
+function bestMatch(text, list, whole){
+  const t = letters(text); let best = null, bs = 0;
+  if (whole) {   // המוצר: משווים את כל הטקסט, כדי ש-"Ruscus Spider" לא ייקרא "Ruscus"
+    list.forEach(name => { const sc = dice(t, letters(name)); if (sc > bs) { bs = sc; best = name; } });
+    return bs >= 0.6 ? best : null;
+  }
+  list.forEach(name => {
+    const n = letters(name); if (!n) return;
+    for (let i = 0; i <= Math.max(0, t.length - n.length); i++){
+      for (const L of [n.length - 1, n.length, n.length + 1]){
+        const sc = dice(t.substr(i, L), n);
+        if (sc > bs) { bs = sc; best = name; }
+      }
+    }
+  });
+  return bs >= 0.45 ? best : null;
+}
+
+function ocrRows(lines){
+  const D = dict(), out = []; let sheet = '';
+  lines.forEach(l => {
+    if (!sheet && !out.length && /^\s*\d{2,5}\s*$/.test(l)) { sheet = l.trim(); return; }
+    const tk = l.replace(/[|\[\]{}()]/g, ' ').split(/\s+/).filter(Boolean);
+    const num = t => /^["'‘’]?\d+["'‘’.,]?$/.test(t) ? parseInt(t.replace(/\D/g, ''), 10) : null;
+    let i = -1, j = -1;
+    for (let a = 0; a < tk.length && i < 0; a++){
+      const s = num(tk[a]); if (s == null || s < 10) continue;
+      for (let b = a + 1; b <= a + 2 && b < tk.length; b++){ const c = num(tk[b]); if (c != null && c >= 1 && c <= 60) { i = a; j = b; break; } }
+    }
+    if (i < 0) return;
+    let stems = num(tk[i]), cartons = num(tk[j]);
+    if (stems > 1000 && stems % 10 === 1 && (stems - 1) / 10 % 50 === 0) stems = (stems - 1) / 10;   // "300|" נקרא כ-3001
+    const left = tk.slice(0, i).join(' ');
+    // אורך: שתי ספרות לפני cm. תיקוני קריאה נפוצים: o אחרי ספרה = 0, S לפני ספרה = 5, G לפני 0 = 6
+    const right = tk.slice(j + 1).join(' ').replace(/(\d)[oO]/g, '$10').replace(/(^|[^A-Za-z])[S](?=\d\s*[cCeE]?m)/g, '$15').replace(/G(?=0)/g, '6');
+    const lm = right.match(/(\d{2})\s*[\dcCeE5]?\s*m\b/) || right.match(/-\s*(\d{2})/);
+    const pText = (lm ? right.slice(0, right.indexOf(lm[0])) : right).replace(/[^A-Za-z .&-]/g, ' ').replace(/[\s-]+$/, '').trim();
+    const product = bestMatch(pText, D.p, true) || pText.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/\s+/g, ' ');
+    let grower = bestMatch(left, D.g);
+    if (!grower) {   // שם לא מוכר: הצירוף האחרון של מילים באנגלית שמתחילות באות גדולה ("vwealDoronHaviv" → "Doron Haviv")
+      const cm = left.replace(/[^A-Za-z -]/g, ' ').match(/[A-Z][a-z]+(?:[- ]?[A-Z][a-z]+)+(?!.*[A-Z][a-z]+[- ]?[A-Z])/);
+      grower = cm ? cm[0].replace(/([a-z])([A-Z])/g, '$1 $2') : '';
+    }
+    const len = lm && +lm[1] >= 30 && +lm[1] <= 150 ? lm[1] : '';
+    if (!product && !grower) return;
+    out.push({ product: product, len: len || $('defLen').value,
+               qty: String(stems), cartons: String(cartons), grower: grower || '', bud: '' });
+  });
+  return { sheet: sheet, rows: out };
+}
+
+async function readImage(f){
+  try {
+    const bmp = await createImageBitmap(f, { imageOrientation: 'from-image' });
+    runOcr([toCanvas(bmp, bmp.width, bmp.height)], f.name);
+  } catch (err) { msg('fileMsg', 'err', 'לא הצלחתי לפתוח את התמונה (' + esc(f.name) + '). נסה JPG או PNG.'); }
+}
+
+async function ocrPdf(buf, name){
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: buf }).promise, cs = [];
+    for (let pg = 1; pg <= Math.min(pdf.numPages, 4); pg++){
+      const page = await pdf.getPage(pg), vp = page.getViewport({ scale: 3 });
+      const c = document.createElement('canvas'); c.width = vp.width; c.height = vp.height;
+      await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      cs.push(toCanvas(c, c.width, c.height));
+    }
+    runOcr(cs, name);
+  } catch (err) { msg('fileMsg', 'err', 'לא הצלחתי לקרוא את ה-PDF: ' + esc(err.message)); }
+}
+
+/* ===================== קובץ PDF ===================== */
+// PDF שנוצר ממחשב (Word / Excel / תוכנה): קוראים את הטקסט עם המיקומים, מקבצים לשורות לפי הגובה,
+// ובתוך שורה מפרידים לתאים לפי רווח גדול בין המילים. כל שורה נקראת כמו בהדבקה (parseLine).
+// PDF סרוק (תמונה) — אין בו טקסט, ומקבלים הודעה.
+async function pdfLines(buf){
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const lines = [];
+  for (let pg = 1; pg <= pdf.numPages; pg++){
+    const tc = await (await pdf.getPage(pg)).getTextContent();
+    const items = tc.items.filter(it => it.str && it.str.trim()).map(it => ({
+      s: it.str, x: it.transform[4], y: it.transform[5], w: it.width || 0, h: Math.abs(it.transform[3]) || 10 }));
+    const rows = [];
+    items.sort((a, b) => b.y - a.y).forEach(it => {
+      const r = rows.find(r => Math.abs(r.y - it.y) < Math.max(2.5, it.h * 0.4));
+      if (r) r.items.push(it); else rows.push({ y: it.y, items: [it] });
+    });
+    rows.forEach(r => {
+      r.items.sort((a, b) => a.x - b.x);
+      let line = '', end = null;
+      r.items.forEach(it => {
+        if (end === null) line = it.s;
+        else {
+          const gap = it.x - end, dd = /\d$/.test(line) && /^\d/.test(it.s);   // ספרות של אותו מספר שנשמרו בנפרד ("1","0" → 10)
+          line += (dd && gap < it.h * 0.8 ? '' : gap > it.h * 0.9 ? '\t' : gap > it.h * 0.15 ? ' ' : '') + it.s;
+        }
+        end = it.x + it.w;
+      });
+      lines.push(line);
+    });
+  }
+  return lines;
+}
+
+function pdfRows(lines){
+  const out = []; let sheet = '';
+  lines.forEach(l => {
+    const r = parseLine(l);
+    if (r) { out.push(r); return; }
+    // מספר התעודה: מספר בודד (2-5 ספרות) בשורה משלו, לפני שורות המוצרים
+    if (!sheet && !out.length && /^\s*\d{2,5}\s*$/.test(l)) sheet = l.trim();
+  });
+  return { sheet: sheet, rows: out };
+}
+
+function readPdf(f){
+  if (typeof pdfjsLib === 'undefined') { msg('fileMsg', 'err', 'רכיב קריאת ה-PDF לא נטען (צריך חיבור לאינטרנט). נסה לרענן את הדף.'); return; }
+  msg('fileMsg', 'warn', '⏳ קורא את ה-PDF…');
+  const rd = new FileReader();
+  rd.onload = async e => {
+    try {
+      const lines = await pdfLines(new Uint8Array(e.target.result));
+      if (!lines.length) { ocrPdf(new Uint8Array(e.target.result), f.name); return; }   // PDF סרוק — קוראים כמו צילום
+      applyResult(pdfRows(lines), f.name);
+    } catch (err) { msg('fileMsg', 'err', 'לא הצלחתי לקרוא את ה-PDF: ' + esc(err.message)); }
   };
   rd.readAsArrayBuffer(f);
 }
@@ -446,6 +644,7 @@ function check(){
 
 function downloadZPL(){
   const list = check(); if (!list) return;
+  learn(ROWS);
   const blob = new Blob([toZPL(list)], { type: 'text/plain' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob); a.download = 'labels-' + $('sheet').value.trim() + '.zpl';
@@ -457,6 +656,7 @@ function downloadZPL(){
 // הדפסה ישירה דרך Zebra Browser Print (שירות מקומי בפורט 9100 / 9101)
 async function printZebra(){
   const list = check(); if (!list) return;
+  learn(ROWS);
   if (list.length > 20 && !window.confirm('להדפיס ' + list.length + ' מדבקות?')) return;
   const z = toZPL(list);
   msg('printMsg', 'warn', '⏳ מתחבר למדפסת…');
