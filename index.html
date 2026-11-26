@@ -129,6 +129,8 @@
         <label class="f">גובה מדבקה (מ"מ)<input id="hmm" type="number" value="66"></label>
         <label class="f">רזולוציה
           <select id="dpi"><option value="8">203 dpi</option><option value="12">300 dpi</option></select></label>
+        <label class="f">שפת מדפסת
+          <select id="lang"><option value="zpl">ZPL (רוב מדפסות Zebra)</option><option value="epl">EPL (LP 2844 ישנה)</option></select></label>
         <label class="f">הזזה ימינה (מ"מ)<input id="offx" type="number" value="0" step="0.5"></label>
         <label class="f">הזזה למטה (מ"מ)<input id="offy" type="number" value="0" step="0.5"></label>
         <label class="f">כתובת<input id="addr" type="text" style="width:330px" class="ltr" value="Nachalat Ithack 14 Tel Aviv 6744813 Israel"></label>
@@ -147,7 +149,7 @@
 /* ===================== נתונים ===================== */
 const $ = id => document.getElementById(id);
 let ROWS = [];
-const SETTINGS = ['sheet', 'defLen', 'numOn', 'numStart', 'wmm', 'hmm', 'dpi', 'offx', 'offy', 'addr'];
+const SETTINGS = ['sheet', 'defLen', 'numOn', 'numStart', 'wmm', 'hmm', 'dpi', 'offx', 'offy', 'addr', 'lang'];
 
 function save(){
   try {
@@ -595,6 +597,47 @@ function toZPL(list){
   }).join('');
 }
 
+/* ===================== EPL (מדפסות ישנות כמו LP 2844) ===================== */
+// אותה פריסה (layout) בשפת EPL2. ב-EPL אין גופן שמשתנה בחופשיות: יש 4 גופנים קבועים (רוחב×גובה בנקודות, 203 dpi)
+// שמגדילים בכפולות שלמות, ולכן לכל טקסט נבחר הצירוף הגדול ביותר שלא עובר את הגובה ונכנס ברוחב.
+const EPL_FONTS = { 1: [10, 12], 2: [12, 16], 3: [14, 20], 4: [16, 24] };   // [רוחב תו כולל רווח, גובה]
+function eplFont(chars, hDots, maxW){
+  let best = { f: 1, hm: 1, vm: 1 }, bs = -1;
+  for (const f in EPL_FONTS) for (let vm = 1; vm <= 4; vm++) for (let hm = 1; hm <= vm; hm++){
+    const [cw, ch] = EPL_FONTS[f];
+    if (ch * vm > hDots * 1.08 || cw * hm * chars > maxW) continue;
+    const sc = ch * vm - Math.abs(cw * hm / (ch * vm) - 0.62) * 8;   // גבוה ככל האפשר, ביחס דומה לגופן של ZPL
+    if (sc > bs) { bs = sc; best = { f: +f, hm: hm, vm: vm }; }
+  }
+  return best;
+}
+
+function toEPL(list){
+  const d = +$('dpi').value, D = mm => Math.round(mm * d);
+  const W = D(+$('wmm').value || 100), H = D(+$('hmm').value || 66);
+  const ox = D(+$('offx').value || 0), oy = D(+$('offy').value || 0);
+  return list.map(l => {
+    let z = '\nN\nq' + W + '\nQ' + H + ',24\nZT\nR' + ox + ',' + oy + '\n';
+    layout(l).forEach(e => {
+      if (e.t === 'box') {
+        const th = Math.max(1, D(e.th));
+        z += 'LO' + D(e.x) + ',' + D(e.y) + ',' + Math.max(th, D(e.w)) + ',' + Math.max(th, D(e.h)) + '\n';
+      } else if (e.s !== '') {
+        const s = String(e.s).replace(/[^\x20-\x7E]/g, '?'), n = s.length;
+        const maxW = e.box ? D(e.box) : D(e.w) * 0.62 * n * 1.1;   // לא רחב יותר ממה שתופס ב-ZPL
+        const f = eplFont(n, D(e.h), maxW), tw = EPL_FONTS[f.f][0] * f.hm * n;
+        let x = D(e.x);
+        if (e.box && e.al === 'R') x += D(e.box) - tw;
+        if (e.box && e.al === 'C') x += Math.round((D(e.box) - tw) / 2);
+        z += 'A' + Math.max(0, x) + ',' + D(e.y) + ',0,' + f.f + ',' + f.hm + ',' + f.vm + ',N,"' + s.replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"\n';
+      }
+    });
+    return z + 'P1\n';
+  }).join('');
+}
+
+function printData(list){ return $('lang').value === 'epl' ? toEPL(list) : toZPL(list); }
+
 /* ===================== תצוגה (SVG) ===================== */
 function toSVG(l){
   const W = +$('wmm').value || 100, H = +$('hmm').value || 66;
@@ -648,9 +691,9 @@ function check(){
 function downloadZPL(){
   const list = check(); if (!list) return;
   learn(ROWS);
-  const blob = new Blob([toZPL(list)], { type: 'text/plain' });
+  const blob = new Blob([printData(list)], { type: 'text/plain' });
   const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob); a.download = 'labels-' + $('sheet').value.trim() + '.zpl';
+  a.href = URL.createObjectURL(blob); a.download = 'labels-' + $('sheet').value.trim() + '.' + $('lang').value;
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
   msg('printMsg', 'ok', 'הקובץ ירד — ' + list.length + ' מדבקות.');
@@ -659,7 +702,7 @@ function downloadZPL(){
 // הדפסה ישירה דרך Zebra Browser Print (שירות מקומי בפורט 9100 / 9101)
 // ---- מדפסות Zebra דרך Zebra Browser Print: רשימה, בחירה שנשמרת במחשב, וגודל מדבקה לכל מדפסת
 let BP = null, PRINTERS = [];
-const PSIZE = ['wmm', 'hmm', 'dpi', 'offx', 'offy'];
+const PSIZE = ['wmm', 'hmm', 'dpi', 'offx', 'offy', 'lang'];
 const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
 
@@ -690,6 +733,7 @@ function pickPrinter(silent){
   lsSet('sgPrinter', id);
   const sz = lsGet('sgPrinterSize', {})[id];
   if (sz) { PSIZE.forEach(k => { if (sz[k] != null) $(k).value = sz[k]; }); render(); }
+  else if (/2844|EPL|TLP/i.test(p.name || '')) { $('lang').value = 'epl'; savePrinterSize(); }   // LP 2844 מדברת EPL
   if (!silent) msg('printMsg', 'ok', 'נבחרה המדפסת ' + esc(p.name || id) + (sz ? ' (עם גודל המדבקה שלה)' : ' — בדוק בהגדרות את גודל המדבקה שלה'));
 }
 
@@ -710,7 +754,7 @@ async function printZebra(){
   if (list.length > 20 && !window.confirm('להדפיס ' + list.length + ' מדבקות ב-' + (p.name || '') + '?')) return;
   msg('printMsg', 'warn', '⏳ שולח ל-' + esc(p.name || '') + '…');
   try {
-    const w = await fetch(BP + '/write', { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ device: p, data: toZPL(list) }) });
+    const w = await fetch(BP + '/write', { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ device: p, data: printData(list) }) });
     if (!w.ok) throw new Error('write ' + w.status);
     msg('printMsg', 'ok', '✅ נשלח למדפסת ' + esc(p.name || '') + ' — ' + list.length + ' מדבקות');
   } catch (e) {
