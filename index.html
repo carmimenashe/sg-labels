@@ -110,6 +110,9 @@
           <option value="row">שורה אחת…</option>
         </select></label>
       <label class="f" id="rowPickWrap" style="display:none">שורה<select id="rowPick" onchange="render()"></select></label>
+      <label class="f">מדפסת
+        <span style="display:flex;gap:6px"><select id="printer" onchange="pickPrinter()"><option value="">מחפש מדפסות…</option></select>
+        <button class="btn sec" title="חפש מדפסות שוב" onclick="findPrinters()">🔄</button></span></label>
       <button class="btn" id="zebraBtn" onclick="printZebra()">🖨️ הדפס ל-Zebra</button>
       <button class="btn sec" onclick="downloadZPL()">הורד קובץ ZPL</button>
       <button class="btn sec" onclick="window.print()">הדפסה מהדפדפן</button>
@@ -654,29 +657,73 @@ function downloadZPL(){
 }
 
 // הדפסה ישירה דרך Zebra Browser Print (שירות מקומי בפורט 9100 / 9101)
-async function printZebra(){
-  const list = check(); if (!list) return;
-  learn(ROWS);
-  if (list.length > 20 && !window.confirm('להדפיס ' + list.length + ' מדבקות?')) return;
-  const z = toZPL(list);
-  msg('printMsg', 'warn', '⏳ מתחבר למדפסת…');
+// ---- מדפסות Zebra דרך Zebra Browser Print: רשימה, בחירה שנשמרת במחשב, וגודל מדבקה לכל מדפסת
+let BP = null, PRINTERS = [];
+const PSIZE = ['wmm', 'hmm', 'dpi', 'offx', 'offy'];
+const lsGet = (k, d) => { try { return JSON.parse(localStorage.getItem(k) || 'null') ?? d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+
+async function findPrinters(){
+  BP = null; PRINTERS = [];
   for (const base of ['http://127.0.0.1:9100', 'https://127.0.0.1:9101', 'http://localhost:9100']) {
     try {
       const res = await (await fetch(base + '/available')).json();
-      const ps = (res && res.printer) || [];
-      if (!ps.length) continue;
-      const w = await fetch(base + '/write', { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ device: ps[0], data: z }) });
-      if (!w.ok) throw new Error('write ' + w.status);
-      msg('printMsg', 'ok', '✅ נשלח למדפסת ' + esc(ps[0].name || '') + ' — ' + list.length + ' מדבקות');
-      return;
+      const ps = ((res && res.printer) || []).filter(Boolean);
+      if (ps.length) { BP = base; PRINTERS = ps; break; }
     } catch (e) { /* הכתובת הבאה */ }
   }
-  msg('printMsg', 'err', 'המדפסת לא נמצאה. ודא ש-<b>Zebra Browser Print</b> פתוח (אייקון ליד השעון) והמדפסת דלוקה — או השתמש ב"הורד קובץ ZPL".');
+  const sel = $('printer'), saved = lsGet('sgPrinter', '');
+  if (!PRINTERS.length) { sel.innerHTML = '<option value="">לא נמצאו מדפסות</option>'; return; }
+  sel.innerHTML = PRINTERS.map((p, i) => '<option value="' + i + '">' + esc(p.name || p.uid || ('מדפסת ' + (i + 1))) +
+    (p.connection ? ' (' + esc(p.connection) + ')' : '') + '</option>').join('');
+  const k = PRINTERS.findIndex(p => (p.uid || p.name) === saved);
+  sel.value = String(k >= 0 ? k : 0);
+  pickPrinter(true);
+}
+
+function curPrinter(){ return PRINTERS[+$('printer').value] || null; }
+
+// בחירת מדפסת: נזכרת במחשב, ומחזירה את גודל המדבקה שנשמר לה
+function pickPrinter(silent){
+  const p = curPrinter(); if (!p) return;
+  const id = p.uid || p.name;
+  lsSet('sgPrinter', id);
+  const sz = lsGet('sgPrinterSize', {})[id];
+  if (sz) { PSIZE.forEach(k => { if (sz[k] != null) $(k).value = sz[k]; }); render(); }
+  if (!silent) msg('printMsg', 'ok', 'נבחרה המדפסת ' + esc(p.name || id) + (sz ? ' (עם גודל המדבקה שלה)' : ' — בדוק בהגדרות את גודל המדבקה שלה'));
+}
+
+// כל שינוי בגודל / רזולוציה / הזזה נשמר למדפסת הנבחרת
+function savePrinterSize(){
+  const p = curPrinter(); if (!p) return;
+  const all = lsGet('sgPrinterSize', {}), sz = {};
+  PSIZE.forEach(k => sz[k] = $(k).value);
+  all[p.uid || p.name] = sz; lsSet('sgPrinterSize', all);
+}
+
+async function printZebra(){
+  const list = check(); if (!list) return;
+  learn(ROWS);
+  if (!PRINTERS.length) await findPrinters();
+  const p = curPrinter();
+  if (!p) { msg('printMsg', 'err', 'המדפסת לא נמצאה. ודא ש-<b>Zebra Browser Print</b> פתוח (אייקון ליד השעון) והמדפסת דלוקה, ולחץ 🔄 — או השתמש ב"הורד קובץ ZPL".'); return; }
+  if (list.length > 20 && !window.confirm('להדפיס ' + list.length + ' מדבקות ב-' + (p.name || '') + '?')) return;
+  msg('printMsg', 'warn', '⏳ שולח ל-' + esc(p.name || '') + '…');
+  try {
+    const w = await fetch(BP + '/write', { method:'POST', headers:{ 'Content-Type':'text/plain' }, body: JSON.stringify({ device: p, data: toZPL(list) }) });
+    if (!w.ok) throw new Error('write ' + w.status);
+    msg('printMsg', 'ok', '✅ נשלח למדפסת ' + esc(p.name || '') + ' — ' + list.length + ' מדבקות');
+  } catch (e) {
+    msg('printMsg', 'err', 'השליחה ל-' + esc(p.name || '') + ' נכשלה. ודא שהמדפסת דלוקה ומחוברת, ולחץ 🔄.');
+  }
 }
 
 /* ===================== התחלה ===================== */
 load();
 SETTINGS.forEach(k => $(k).addEventListener('input', render));
+PSIZE.forEach(k => $(k).addEventListener('input', savePrinterSize));
+PSIZE.forEach(k => $(k).addEventListener('change', savePrinterSize));
+findPrinters();
 $('numOn').addEventListener('change', render);
 drawRows();
 </script>
